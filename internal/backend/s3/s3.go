@@ -40,27 +40,31 @@ func open(cfg Config, rt http.RoundTripper) (*Backend, error) {
 		minio.MaxRetry = int(cfg.MaxRetries)
 	}
 
-	// Chains all credential types, starting with
-	// Static credentials provided by user.
-	// IAM profile based credentials. (performs an HTTP
-	// call to a pre-defined endpoint, only valid inside
-	// configured ec2 instances)
-	// AWS env variables such as AWS_ACCESS_KEY_ID
-	// Minio env variables such as MINIO_ACCESS_KEY
+	// Chains all credential types, in the following order:
+	// 	- Static credentials provided by user
+	//	- AWS env vars (i.e. AWS_ACCESS_KEY_ID)
+	//  - Minio env vars (i.e. MINIO_ACCESS_KEY)
+	//  - AWS creds file (i.e. AWS_SHARED_CREDENTIALS_FILE or ~/.aws/credentials)
+	//  - Minio creds file (i.e. MINIO_SHARED_CREDENTIALS_FILE or ~/.mc/config.json)
+	//  - IAM profile based credentials. (performs an HTTP
+	//    call to a pre-defined endpoint, only valid inside
+	//    configured ec2 instances)
 	creds := credentials.NewChainCredentials([]credentials.Provider{
-		&credentials.EnvAWS{},
 		&credentials.Static{
 			Value: credentials.Value{
 				AccessKeyID:     cfg.KeyID,
 				SecretAccessKey: cfg.Secret,
 			},
 		},
+		&credentials.EnvAWS{},
+		&credentials.EnvMinio{},
+		&credentials.FileAWSCredentials{},
+		&credentials.FileMinioClient{},
 		&credentials.IAM{
 			Client: &http.Client{
 				Transport: http.DefaultTransport,
 			},
 		},
-		&credentials.EnvMinio{},
 	})
 	client, err := minio.NewWithCredentials(cfg.Endpoint, creds, !cfg.UseHTTP, "")
 	if err != nil {
@@ -184,6 +188,10 @@ func (be *Backend) ReadDir(dir string) (list []os.FileInfo, err error) {
 	defer close(done)
 
 	for obj := range be.client.ListObjects(be.cfg.Bucket, dir, false, done) {
+		if obj.Err != nil {
+			return nil, err
+		}
+
 		if obj.Key == "" {
 			continue
 		}
@@ -420,6 +428,10 @@ func (be *Backend) List(ctx context.Context, t restic.FileType, fn func(restic.F
 	listresp := be.client.ListObjects(be.cfg.Bucket, prefix, recursive, ctx.Done())
 
 	for obj := range listresp {
+		if obj.Err != nil {
+			return obj.Err
+		}
+
 		m := strings.TrimPrefix(obj.Key, prefix)
 		if m == "" {
 			continue
