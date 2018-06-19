@@ -40,8 +40,7 @@ As you can see, restic created a backup of the directory and was pretty
 fast! The specific snapshot just created is identified by a sequence of
 hexadecimal characters, ``40dc1520`` in this case.
 
-If you don't pass the ``--verbose`` option, restic will print less data (but
-you'll still get a nice live status display).
+If you don't pass the ``--verbose`` option, restic will print less data. You'll still get a nice live status display. Be aware that the live status shows the processed files and not the transferred data. Transferred volume might be lower (due to deduplication) or higher.
 
 If you run the command again, restic will create another snapshot of
 your data, but this time it's even faster. This is de-duplication at
@@ -299,3 +298,17 @@ information. Just specify the tags for a snapshot one by one with ``--tag``:
 The tags can later be used to keep (or forget) snapshots with the ``forget``
 command. The command ``tag`` can be used to modify tags on an existing
 snapshot.
+
+Space requirements
+******************
+
+Restic currently assumes that your backup repository has sufficient space
+for the backup operation you are about to perform. This is a realistic
+assumption for many cloud providers, but may not be true when backing up
+to local disks.
+
+Should you run out of space during the middle of a backup, there will be
+some additional data in the repository, but the snapshot will never be
+created as it would only be written at the very (successful) end of
+the backup operation.  Previous snapshots will still be there and will still
+work.
